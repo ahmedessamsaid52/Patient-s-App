@@ -276,6 +276,23 @@ details[open]>summary .caret{transform:rotate(180deg)}
 .ob.NA{background:var(--idle-soft);color:var(--ink-2)}
 .lane.s-NA{background:var(--line-2)}
 .v:disabled{opacity:.4;cursor:not-allowed}
+/* screenshots */
+.shotzone{border:2px dashed color-mix(in srgb,var(--fail) 55%,var(--line));border-radius:8px;padding:10px 12px;background:var(--card);display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 8px;cursor:pointer;font-size:13px;color:var(--ink-2)}
+.shotzone.drag{background:var(--fail-soft);border-color:var(--fail)}
+.shotzone .hint{flex:1;min-width:200px}
+.thumb{position:relative;width:84px;height:60px;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:var(--line-2);cursor:zoom-in;flex:none}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb button{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.65);color:#fff;font-size:12px;line-height:20px;padding:0;cursor:pointer}
+.deflist{margin:0 0 14px;display:grid;gap:8px}
+.defitem{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:grid;gap:8px;background:var(--card)}
+.defitem .dh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.defitem .dh b{font-family:var(--mono);font-size:12px}
+.defitem .shots{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.addshot{border:1.5px dashed var(--line);background:none;border-radius:6px;height:60px;padding:0 12px;font-size:12.5px;color:var(--ink-2)}
+.addshot:hover{border-color:var(--ink-3)}
+.lightbox{position:fixed;inset:0;background:rgba(10,12,16,.82);display:none;align-items:center;justify-content:center;z-index:80;padding:4vh 4vw;cursor:zoom-out}
+.lightbox.open{display:flex}
+.lightbox img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
 /* ===== IDH brand layer (Brand Templates V1.0) ===== */
 :root{--ink:#16181D;--paper:#FFFFFF;--card:#FFFFFF;--line:#E4E4E7;--line-2:#F6F3EE;--cream:#F8F4EC;--gold:#B68A4A;--gold-soft:#F6EEDD;--mono:"Geist Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;--shadow:none}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#111317;--card:#181B21;--line:#2A2F38;--line-2:#1F232A;--cream:#1F232A;--gold-soft:#2E2617}}
@@ -391,6 +408,8 @@ body{font-family:var(--body)}
   <p class="lead">This deletes every result, defect, comment and your name saved in this browser. It can’t be undone, so export first if you still need them.</p>
   <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px"><button class="btn btn-ghost" id="rsCancel">Cancel</button><button class="btn btn-red" id="rsGo">Yes, reset everything</button></div>
 </div></div>
+<div class="lightbox" id="lightbox"><img alt="Screenshot"></div>
+<input type="file" id="shotIn" accept="image/*" multiple hidden>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <canvas id="confetti"></canvas>
 
@@ -428,6 +447,15 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){canStor
 try{localStorage.setItem(KEY+"-t","1");localStorage.removeItem(KEY+"-t")}catch(e){canStore=false}
 if(!canStore)$("#storeBanner").style.display="block";
 
+/* ===== SCREENSHOTS: kept in this browser (IndexedDB), compressed to JPEG ===== */
+const SHOT={};let shotDB=null;
+function idb(){return new Promise(r=>{try{const q=indexedDB.open("almokhtabar-uat-shots",1);q.onupgradeneeded=()=>q.result.createObjectStore("s");q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)}catch(e){r(null)}})}
+async function shotPut(k,v){SHOT[k]=v;if(!shotDB)return;await new Promise(r=>{const tx=shotDB.transaction("s","readwrite");tx.objectStore("s").put(v,k);tx.oncomplete=tx.onerror=r})}
+async function shotDel(k){delete SHOT[k];if(!shotDB)return;await new Promise(r=>{const tx=shotDB.transaction("s","readwrite");tx.objectStore("s").delete(k);tx.oncomplete=tx.onerror=r})}
+async function shotLoadAll(){shotDB=await idb();if(!shotDB)return;await new Promise(r=>{const tx=shotDB.transaction("s");const st=tx.objectStore("s");const rq=st.openCursor();rq.onsuccess=()=>{const cu=rq.result;if(cu){SHOT[cu.key]=cu.value;cu.continue()}else r()};rq.onerror=r})}
+async function shotClear(){for(const k of Object.keys(SHOT))delete SHOT[k];if(!shotDB)return;await new Promise(r=>{const tx=shotDB.transaction("s","readwrite");tx.objectStore("s").clear();tx.oncomplete=tx.onerror=r})}
+function compressImg(file){return new Promise((res,rej)=>{const url=URL.createObjectURL(file);const im=new Image();im.onload=()=>{const m=1400,s=Math.min(1,m/Math.max(im.width,im.height));const c=document.createElement("canvas");c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL("image/jpeg",.8))};im.onerror=()=>{URL.revokeObjectURL(url);rej()};im.src=url})}
+const MAXSHOTS=5;
 const myOS=()=>S.profile?.os||"ios";
 const osList=()=>myOS()==="both"?["ios","and"]:[myOS()];
 const osName=()=>myOS()==="both"?"iOS and Android":myOS()==="ios"?"iOS":"Android";
@@ -464,7 +492,7 @@ function confetti(n){if(matchMedia("(prefers-reduced-motion: reduce)").matches)r
 function tick(){cx.clearRect(0,0,innerWidth,innerHeight);parts.forEach(p=>{p.vy+=.35;p.vx*=.99;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;p.l++;cx.save();cx.translate(p.x,p.y);cx.rotate(p.a);cx.fillStyle=p.c;cx.fillRect(-p.r/2,-p.r/4,p.r,p.r/2);cx.restore()});parts=parts.filter(p=>p.y<innerHeight+40&&p.l<260);raf=parts.length?requestAnimationFrame(tick):(cx.clearRect(0,0,innerWidth,innerHeight),null)}
 
 /* UI state */
-const U={f:"INS",q:"",hide:false,open:new Set(),def:{},pick:{},sev:{}};
+const U={f:"INS",q:"",hide:false,open:new Set(),def:{},pick:{},sev:{},shots:{}};let shotTarget=null;
 
 function countdown(){const ms=DEADLINE-new Date(),el=$("#countdown");if(ms<=0){el.innerHTML="<span>⏰</span><small>Deadline passed</small>";return}
   const d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5);el.innerHTML=`<span>⏳</span><span class="n">${d}</span><small>days ${h}h to deadline</small>`}
@@ -490,7 +518,7 @@ function panel(){
   el.innerHTML=`<summary><h2>📊 ${FEAT[f].name} progress</h2>
     <div class="kpis"><div class="kpi"><b>${s.done}/${s.total}</b><span>cycles complete</span></div><div class="kpi"><b>${s.done?pct(s.passP):"–"}</b><span>pass rate</span></div><div class="kpi"><b>${od.length}</b><span>open defects 🐞</span></div><span class="ready ${r.ok?"ok":"no"}">${r.t}</span><span class="caret">▾</span></div></summary>
     <div class="pbody"><div><h3>📱 Runs per platform</h3><p class="muted" style="margin:0 0 14px;display:flex;gap:16px;flex-wrap:wrap">${(f==="IT"?["sys"]:["ios","and","web"]).map(k=>`<span style="display:inline-flex;gap:6px;align-items:center">${ico(k,16)} ${PL[k]} <b>${s[k]}/${s.total}</b></span>`).join("")}</p>
-      <h3>🐞 Defects</h3>${defs.length?`<div class="dl">${defs.map(d=>{const c=byId[d.cyc];return `<div class="drow"><div><b>${esc(d.id)}</b><br><span class="sev" style="--sev:${SEV[d.sev]?.c||"#999"}">● ${esc(d.sev)}</span></div><div class="d" title="${esc(d.desc)}">${ico(d.plat,14)} <a class="muted" href="#c-${d.cyc}" data-go="${d.cyc}">${c?c.em+" "+esc(c.t):d.cyc}</a> · step ${(d.steps||[]).join(", ")}<br>${esc(d.desc)} <span class="muted">· ${esc(d.by)}</span></div><select data-ds="${esc(d.key)}" aria-label="Defect status">${DSTAT.map(x=>`<option ${x===d.status?"selected":""}>${x}</option>`).join("")}</select></div>`}).join("")}</div>`:`<div class="empty dl"><span class="e">🐞</span>No defects yet. When a journey fails on the app or the website, press ❌ and pick the step that broke.</div>`}</div>
+      <h3>🐞 Defects</h3>${defs.length?`<div class="dl">${defs.map(d=>{const c=byId[d.cyc];return `<div class="drow"><div><b>${esc(d.id)}</b><br><span class="sev" style="--sev:${SEV[d.sev]?.c||"#999"}">● ${esc(d.sev)}</span></div><div class="d" title="${esc(d.desc)}">${ico(d.plat,14)} <a class="muted" href="#c-${d.cyc}" data-go="${d.cyc}">${c?c.em+" "+esc(c.t):d.cyc}</a> · step ${(d.steps||[]).join(", ")}${(d.shots||[]).length?` · 📸 ${d.shots.length}`:""}<br>${esc(d.desc)} <span class="muted">· ${esc(d.by)}</span></div><select data-ds="${esc(d.key)}" aria-label="Defect status">${DSTAT.map(x=>`<option ${x===d.status?"selected":""}>${x}</option>`).join("")}</select></div>`}).join("")}</div>`:`<div class="empty dl"><span class="e">🐞</span>No defects yet. When a journey fails on the app or the website, press ❌ and pick the step that broke.</div>`}</div>
     <div><h3>🏆 Leaderboard</h3>${lb.length?lb.map((p,i)=>`<div class="lb"><div class="m">${["🥇","🥈","🥉"][i]||`<span class="muted">${i+1}</span>`}</div><div>${esc(p.n)}<small>${esc(p.t||"")}</small></div><div class="num">${p.x}<small>runs</small></div><div class="num">${p.d}<small>🐞</small></div></div>`).join(""):`<div class="empty"><span class="e">🏆</span>Your first recorded run puts you on top.</div>`}
     <p class="hint">A run is one journey on one platform. Shows the results in this file; Ahmed's copy shows the whole team after he imports everyone's exports.</p></div></div>`;
   el.open=wasOpen}
@@ -522,10 +550,12 @@ function cardHTML(c){
      <div class="cfoot" style="margin-top:8px"><button class="more" data-act="toggle">${open?"Hide steps ▴":`Show the ${c.steps.length} steps ▾`}</button></div></div>
     <div class="obadge">${obChip(o)}</div></div>
    <div class="cbody">
+    ${defs.length?`<div class="deflist">${defs.map(d=>`<div class="defitem"><div class="dh"><b>${esc(d.id)}</b> ${ico(d.plat,14)} <span class="muted">${esc(PL[d.plat]||"")} · step ${(d.steps||[]).join(", ")} · ${esc(d.sev)} · ${esc(d.status)}</span><span>${esc(d.desc)}</span></div><div class="shots">${(d.shots||[]).filter(k=>SHOT[k]).map(k=>`<span class="thumb" data-view="${k}" data-src="saved"><img src="${SHOT[k]}" alt=""><button data-act="rmshot" data-d="${esc(d.key)}" data-k="${k}" aria-label="Remove">✕</button></span>`).join("")}${(d.shots||[]).length<MAXSHOTS?`<button class="addshot" data-act="pickshot" data-target="${esc(d.key)}">📸 Add screenshot</button>`:""}</div></div>`).join("")}</div>`:""}
     ${dp?`<div class="defbox2"><h4>🐞 Good catch! Which step failed?</h4>
       <div class="platpick">Where did it fail? ${mine.map(k=>`<button class="${dp===k?"on":""}" data-dplat="${k}">${ico(k,15)} ${PL[k]}</button>`).join("")}</div>
       <div class="pick">${c.steps.map(x=>`<label class="${pick.includes(x.n)?"on":""}"><input type="checkbox" data-pick="${x.n}" ${pick.includes(x.n)?"checked":""}>${x.n}. ${esc(x.nm)}</label>`).join("")}</div>
       <textarea class="inp" data-def="desc" placeholder="What did you expect, and what happened instead?"></textarea>
+      <div class="shotzone" data-act="pickshot" data-target="new" title="Paste, drag or click to add a screenshot"><span class="hint">📸 <b>Screenshots</b> (optional, up to ${MAXSHOTS}): press <b>Ctrl+V</b> to paste, drag a picture here, or click to choose</span>${(U.shots[c.id]||[]).map((s,i)=>`<span class="thumb" data-view="${i}" data-src="new"><img src="${s}" alt=""><button data-act="rmnew" data-i="${i}" aria-label="Remove">✕</button></span>`).join("")}</div>
       <div class="sevs">${Object.keys(SEV).map(k=>`<button style="--sev:${SEV[k].c}" class="${sev===k?"on":""}" data-sev="${k}" title="${SEV[k].h}">${k}</button>`).join("")}<span class="hint">${sev?esc(sev)+": "+SEV[sev].h:"How serious is it?"}</span>
       <button class="btn btn-red" style="margin-left:auto" data-act="saveDef">🐞 Save defect</button></div></div>`:""}
     <div class="pre"><b>🧭 Before you start</b>${esc(c.pre)}</div>
@@ -553,6 +583,30 @@ $("#list").addEventListener("click",e=>{
   if(a==="saveDef"){saveDefect(id);return}
   if(ln&&["Pass","Fail","Blocked","N/A"].includes(a)){if(!S.profile)return setup();if(laneS(id,ln)===a){record(id,ln,"Not Run",true);toast("↺ Back to not run");return}record(id,ln,a)}
 });
+async function addShots(files,id,target){
+  const imgs=[...files].filter(f=>f&&f.type&&f.type.startsWith("image/"));if(!imgs.length){toast("📸 That isn't a picture");return}
+  for(const f of imgs){let data;try{data=await compressImg(f)}catch(err){toast("⚠️ Couldn't read that picture");continue}
+    if(target==="new"){const a=U.shots[id]=U.shots[id]||[];if(a.length>=MAXSHOTS){toast(`📸 Up to ${MAXSHOTS} screenshots per defect`);break}a.push(data)}
+    else{const d=S.defects.find(x=>x.key===target);if(!d)return;d.shots=d.shots||[];if(d.shots.length>=MAXSHOTS){toast(`📸 Up to ${MAXSHOTS} screenshots per defect`);break}
+      let n=d.shots.length+1;while(d.shots.includes(d.id+"-"+n))n++;const k=d.id+"-"+n;await shotPut(k,data);d.shots.push(k);d.ts=nowISO();save()}}
+  keepText(id,()=>refresh(id));toast("📸 Screenshot added")}
+$("#list").addEventListener("click",e=>{
+  const th=e.target.closest(".thumb");if(th&&!e.target.closest("button")){const card=th.closest(".cyc"),id=card.dataset.id;const src=th.dataset.src==="new"?(U.shots[id]||[])[+th.dataset.view]:SHOT[th.dataset.view];if(src){$("#lightbox img").src=src;$("#lightbox").classList.add("open")}e.stopPropagation();return}
+  const b=e.target.closest("[data-act]");if(!b)return;const card=e.target.closest(".cyc");if(!card)return;const id=card.dataset.id;
+  if(b.dataset.act==="pickshot"){if(!S.profile)return setup();shotTarget={id,target:b.dataset.target};$("#shotIn").click();e.stopPropagation()}
+  else if(b.dataset.act==="rmnew"){(U.shots[id]||[]).splice(+b.dataset.i,1);keepText(id,()=>refresh(id));e.stopPropagation()}
+  else if(b.dataset.act==="rmshot"){const d=S.defects.find(x=>x.key===b.dataset.d);if(d){d.shots=(d.shots||[]).filter(k=>k!==b.dataset.k);d.ts=nowISO();save();shotDel(b.dataset.k)}refresh(id);toast("🗑️ Screenshot removed");e.stopPropagation()}
+},true);
+$("#shotIn").onchange=async e=>{if(shotTarget)await addShots(e.target.files,shotTarget.id,shotTarget.target);e.target.value="";shotTarget=null};
+$("#lightbox").onclick=()=>$("#lightbox").classList.remove("open");
+document.addEventListener("keydown",e=>{if(e.key==="Escape")$("#lightbox").classList.remove("open")});
+document.addEventListener("paste",e=>{const files=[...(e.clipboardData?.items||[])].filter(i=>i.kind==="file"&&i.type.startsWith("image/")).map(i=>i.getAsFile());if(!files.length)return;
+  const card=document.activeElement?.closest?.(".cyc")||[...document.querySelectorAll(".cyc")].find(c=>c.querySelector(".defbox2"));
+  if(!card||!card.querySelector(".defbox2")){toast("📸 Open a defect first (press ❌ Fail), then paste");return}
+  e.preventDefault();addShots(files,card.dataset.id,"new")});
+$("#list").addEventListener("dragover",e=>{const z=e.target.closest(".shotzone");if(z){e.preventDefault();z.classList.add("drag")}});
+$("#list").addEventListener("dragleave",e=>{const z=e.target.closest(".shotzone");if(z)z.classList.remove("drag")});
+$("#list").addEventListener("drop",e=>{const z=e.target.closest(".shotzone");if(!z)return;e.preventDefault();z.classList.remove("drag");addShots(e.dataTransfer.files,z.closest(".cyc").dataset.id,"new")});
 $("#list").addEventListener("change",e=>{const pk=e.target.dataset.pick;if(!pk)return;const id=e.target.closest(".cyc").dataset.id;const n=+pk;const cur=new Set(U.pick[id]||[]);e.target.checked?cur.add(n):cur.delete(n);U.pick[id]=[...cur].sort((a,b)=>a-b);e.target.closest("label").classList.toggle("on",e.target.checked)});
 $("#list").addEventListener("input",e=>{const act=e.target.dataset.act;if(act!=="cmt"&&act!=="evi")return;const id=e.target.closest(".cyc").dataset.id;const r=S.results[id]||{lanes:{}};r[act==="cmt"?"c":"evi"]=e.target.value;r.cts=nowISO();S.results[id]=r;save()});
 function keepText(id,fn){const t=document.querySelector(`#c-${id} [data-def="desc"]`)?.value;fn();const n=document.querySelector(`#c-${id} [data-def="desc"]`);if(n&&t)n.value=t}
@@ -583,7 +637,8 @@ function saveDefect(id){
   if(!sev){toast("🎚️ Pick a severity");return}
   const c=byId[id];S.seq[c.f]=(S.seq[c.f]||0)+1;
   const did=FEAT[c.f].prefix+initials(S.profile?.name)+"-"+String(S.seq[c.f]).padStart(3,"0");
-  S.defects.push({key:did,id:did,feat:c.f,cyc:id,plat,steps,desc,sev,status:"Open",date:today(),assigned:"Robotack",res:"",by:S.profile?.name||"",team:S.profile?.team||"",ts:nowISO()});
+  const pend=U.shots[id]||[],keys=pend.map((_,i)=>did+"-"+(i+1));pend.forEach((v,i)=>shotPut(keys[i],v));delete U.shots[id];
+  S.defects.push({key:did,id:did,feat:c.f,cyc:id,plat,steps,desc,sev,status:"Open",date:today(),assigned:"Robotack",res:"",by:S.profile?.name||"",team:S.profile?.team||"",ts:nowISO(),shots:keys});
   if(laneS(id,plat)!=="Fail")record(id,plat,"Fail",true);
   save();delete U.sev[id];delete U.pick[id];delete U.def[id];
   const n=S.defects.filter(x=>x.by===S.profile?.name).length;
@@ -609,7 +664,7 @@ $("#suSave").onclick=()=>{const n=$("#suName").value.trim();if(n.length<3){toast
 $("#mName").onclick=setup;
 $("#mReset").onclick=()=>$("#mResetDlg").classList.add("open");
 $("#rsCancel").onclick=()=>$("#mResetDlg").classList.remove("open");
-$("#rsGo").onclick=()=>{try{localStorage.removeItem(KEY)}catch(e){}S={results:{},defects:[],seq:{INS:0,HC:0,IT:0},fired:{},profile:null};U.open.clear();U.def={};U.pick={};U.sev={};U.f="INS";$("#q").value="";$("#mResetDlg").classList.remove("open");renderAll();toast("🗑️ All data cleared. Fresh start!");setTimeout(setup,400)};
+$("#rsGo").onclick=()=>{try{localStorage.removeItem(KEY)}catch(e){}shotClear();U.shots={};S={results:{},defects:[],seq:{INS:0,HC:0,IT:0},fired:{},profile:null};U.open.clear();U.def={};U.pick={};U.sev={};U.f="INS";$("#q").value="";$("#mResetDlg").classList.remove("open");renderAll();toast("🗑️ All data cleared. Fresh start!");setTimeout(setup,400)};
 $("#mTheme").onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme: dark)").matches;r.dataset.theme=dark?"light":"dark";try{localStorage.setItem(KEY+"-theme",r.dataset.theme)}catch(e){}};
 try{const t=localStorage.getItem(KEY+"-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}
 
@@ -823,7 +878,7 @@ function dashboard(wb){
     for(let j=2;j<=10;j++){const c=ws.getCell(R,j);c.font={name:FONT,size:j===2?14:10,bold:j===3||j===7};c.alignment={horizontal:j===3||j===5?"left":"center",vertical:"middle",indent:j===3||j===5?1:0};c.border={bottom:thin};if(i%2)c.fill=fill(XC.cream)}
     ws.getRow(R).height=22});
   r=lastR+2;
-  ["INS-Cycles","INS-Steps","INS-Summary","INS-Defect Log","HC-Cycles","HC-Steps","HC-Summary","HC-Defect Log","IT-Cycles","IT-Steps","IT-Summary","IT-Defect Log"].forEach((n,i)=>{const c=ws.getCell(r+Math.floor(i/4),2+(i%4)*2);c.value={text:"→ "+n,hyperlink:`#${q(n)}!A1`};c.font={name:FONT,size:10,color:{argb:"FF0563C1"},underline:true}});
+  ["INS-Cycles","INS-Steps","INS-Summary","INS-Defect Log","HC-Cycles","HC-Steps","HC-Summary","HC-Defect Log","IT-Cycles","IT-Steps","IT-Summary","IT-Defect Log","Screenshots"].forEach((n,i)=>{const c=ws.getCell(r+Math.floor(i/4),2+(i%4)*2);c.value={text:"→ "+n,hyperlink:`#${q(n)}!A1`};c.font={name:FONT,size:10,color:{argb:"FF0563C1"},underline:true}});
   r+=4;
   ws.mergeCells(r,2,r,11);const gh=ws.getCell(r,2);gh.value="🧭  How to use this workbook";gh.font={name:FONT,bold:true,size:13};gh.border={bottom:{style:"medium",color:{argb:XC.ink}}};
   const tips=[[XC.yel,"Yellow cells: fill them in. iOS App, Android App, Website, Failed Step, Platform and Severity have dropdowns."],[XC.gry,"Grey cells: calculated automatically (Overall, Defect ID, lookups). Don't type over them."],[XC.failBg,"Red cell: a cycle that failed with no failed step or no defect logged yet."],[null,"Overall = Pass when the app (iOS or Android) and the website both pass, or the website is N/A."],[null,"Steps sheets list what to do and expect at every step, plus the detailed checks (original TC IDs)."]];
@@ -868,11 +923,24 @@ function itSummarySheet(wb,last){
   items.forEach(([lab,v],i)=>{const R=14+i;ws.getCell(R,1).value=lab;ws.getCell(R,1).font={name:FONT,bold:true,size:10};const c=ws.getCell(R,2);c.value=v;c.font={name:FONT,bold:true,size:i===2?11:10};c.border=BOX;c.alignment={horizontal:i===2?"left":"center",vertical:"middle",indent:i===2?1:0};ws.getRow(R).height=22});
   ws.mergeCells(16,2,16,6);ws.addConditionalFormatting({ref:"B16",rules:[{type:"expression",formulae:['ISNUMBER(SEARCH("Ready for",B16))'],priority:10,style:{fill:cfFill(XC.passBg),font:{color:{argb:XC.passFg},bold:true}}},{type:"expression",formulae:['ISNUMBER(SEARCH("Not ready",B16))'],priority:11,style:{fill:cfFill(XC.failBg),font:{color:{argb:XC.failFg},bold:true}}}]});
   ["✍️ Sign-off – IT:","✍️ Sign-off – PMO:"].forEach((lab,i)=>{const R=18+i;ws.getCell(R,1).value=lab;ws.getCell(R,1).font={name:FONT,bold:true,size:10};ws.mergeCells(R,2,R,6);const c=ws.getCell(R,2);c.fill=fill(XC.yel);c.border=BOX;ws.getRow(R).height=24})}
+function shotsSheet(wb){
+  const ws=wb.addWorksheet("Screenshots",{properties:{tabColor:{argb:XC.red}},views:[{state:"frozen",ySplit:2}],pageSetup:{orientation:"portrait",fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  [18,12,30,40,62].forEach((w,i)=>ws.getColumn(i+1).width=w);
+  banner(ws,1,"📸  SCREENSHOTS     |     Every screenshot attached to a defect, with its Defect ID. Double-click a picture in Excel to see it larger.",5,XC.red);
+  head(ws,2,["Defect ID","Cycle ID","Where","Defect Description","Screenshot"]);let R=3,n=0;
+  for(const d of S.defects)for(const k of (d.shots||[])){const data=SHOT[k];if(!data)continue;n++;
+    [d.id,d.cyc,PLAT_TXT[d.plat]||"",d.desc].forEach((v,j)=>{const c=ws.getCell(R,j+1);c.value=v;cellBase(c)});ws.getCell(R,1).font={name:FONT,size:10,bold:true,color:{argb:XC.red}};cellBase(ws.getCell(R,5));
+    const im=new Image();im.src=data;const w=im.naturalWidth||1400,h=im.naturalHeight||900,W2=420,H2=Math.round(W2*h/w);
+    const id=wb.addImage({base64:data.split(",")[1],extension:"jpeg"});ws.addImage(id,{tl:{col:4.05,row:R-1+0.05},ext:{width:W2,height:H2}});
+    ws.getRow(R).height=Math.max(40,H2*0.76+8);R++}
+  if(!n){ws.getCell(3,1).value="No screenshots attached yet.";ws.getCell(3,1).font={name:FONT,size:10,italic:true,color:{argb:XC.ink3}}}
+}
 async function buildWorkbook(){
   const wb=new ExcelJS.Workbook();wb.creator="IDH · Al Mokhtabar UAT Test Hub";wb.company="Integrated Diagnostics Holdings";wb.created=new Date();wb.calcProperties={fullCalcOnLoad:true};
   dashboard(wb);
   for(const f of ["INS","HC"]){const last=cyclesSheet(wb,f);stepsSheet(wb,f);summarySheet(wb,f,last);defectSheet(wb,f,last)}
   {const last=itCyclesSheet(wb);stepsSheet(wb,"IT");itSummarySheet(wb,last);defectSheet(wb,"IT",last)}
+  shotsSheet(wb);
   wb.views=[{activeTab:0,firstSheet:0,visibility:"visible"}];return wb}
 $("#btnExport").onclick=async()=>{
   if(!S.profile)return setup();
@@ -891,7 +959,7 @@ function readRows(ws,key){if(!ws)return[];let hr=0;for(let r=1;r<=4;r++)if(cellV
 $("#mImport").onclick=()=>$("#fileIn").click();
 $("#fileIn").onchange=async e=>{
   if(typeof ExcelJS==="undefined"){toast("📶 Import needs internet. Reconnect and reload.");return}
-  let nr=0,nd=0;const LS=["Pass","Fail","Blocked","N/A","Not Run"];
+  let nr=0,nd=0,ns=0;const LS=["Pass","Fail","Blocked","N/A","Not Run"];
   for(const file of e.target.files){const wb=new ExcelJS.Workbook();try{await wb.xlsx.load(await file.arrayBuffer())}catch(err){toast(`⚠️ ${file.name} couldn't be read`);continue}
     const fileTs=new Date(file.lastModified||Date.now()).toISOString();
     {const sh=SH("IT");for(const r of readRows(wb.getWorksheet(sh.cy),"Cycle ID")){const id=r["Cycle ID"];if(!byId[id])continue;let data={};try{data=JSON.parse(r["Data"]||"{}")}catch(err){}
@@ -901,7 +969,7 @@ $("#fileIn").onchange=async e=>{
       for(const r of readRows(wb.getWorksheet(sh.dl),"Defect ID")){const id=r["Defect ID"];if(!id||!byId[r["Cycle ID"]])continue;const i=S.defects.findIndex(d=>d.key===id);
         const steps=[...String(r["Failed Step"]||"").matchAll(/(?:^|;\s*)(\d+)\./g)].map(m=>+m[1]);
         const o={key:id,id,feat:"IT",cyc:r["Cycle ID"],plat:"sys",steps,desc:r["Defect Description"],sev:r["Severity"],by:r["Reported By"],status:DSTAT.includes(r["Status"])?r["Status"]:"Open",date:r["Reported Date"],assigned:r["Assigned To"],res:r["Resolution / Notes"],team:r["Team"],ts:r["Updated"]||fileTs};
-        if(i<0){S.defects.push(o);nd++}else if((S.defects[i].ts||"")<o.ts){S.defects[i]=o;nd++}}}
+        if(i<0){o.shots=[];S.defects.push(o);nd++}else if((S.defects[i].ts||"")<o.ts){o.shots=S.defects[i].shots||[];S.defects[i]=o;nd++}}}
     for(const f of ["INS","HC"]){const sh=SH(f);
       for(const r of readRows(wb.getWorksheet(sh.cy),"Cycle ID")){const id=r["Cycle ID"];if(!byId[id])continue;let data={};try{data=JSON.parse(r["Data"]||"{}")}catch(err){}
         const dl=data.lanes||{},cur=S.results[id]||{lanes:{}};cur.lanes=cur.lanes||{};
@@ -914,13 +982,18 @@ $("#fileIn").onchange=async e=>{
       for(const r of readRows(wb.getWorksheet(sh.dl),"Defect ID")){const id=r["Defect ID"];if(!id||!byId[r["Cycle ID"]])continue;const i=S.defects.findIndex(d=>d.key===id);
         const steps=[...String(r["Failed Step"]||"").matchAll(/(?:^|;\s*)(\d+)\./g)].map(m=>+m[1]);
         const o={key:id,id,feat:f,cyc:r["Cycle ID"],plat:PLAT_KEY[r["Platform"]]||"web",steps,desc:r["Defect Description"],sev:r["Severity"],by:r["Reported By"],status:DSTAT.includes(r["Status"])?r["Status"]:"Open",date:r["Reported Date"],assigned:r["Assigned To"],res:r["Resolution / Notes"],team:r["Team"],ts:r["Updated"]||fileTs};
-        if(i<0){S.defects.push(o);nd++}else if((S.defects[i].ts||"")<o.ts){S.defects[i]=o;nd++}}}}
-  save();e.target.value="";renderAll();toast(`📥 Merged ${nr} runs and ${nd} defects`)};
+        if(i<0){o.shots=[];S.defects.push(o);nd++}else if((S.defects[i].ts||"")<o.ts){o.shots=S.defects[i].shots||[];S.defects[i]=o;nd++}}}
+    const sw=wb.getWorksheet("Screenshots");if(sw){for(const im of sw.getImages()){try{const row=Math.round(im.range.tl.nativeRow)+1,did=cellVal(sw.getRow(row).getCell(1).value),d=S.defects.find(x=>x.id===did);if(!d)continue;
+      const media=wb.getImage(+im.imageId);const u=new Uint8Array(media.buffer);let bin="";for(let j=0;j<u.length;j+=32768)bin+=String.fromCharCode.apply(null,u.subarray(j,j+32768));
+      const data="data:image/"+(media.extension==="png"?"png":"jpeg")+";base64,"+btoa(bin);d.shots=d.shots||[];if(d.shots.some(k=>SHOT[k]===data)||d.shots.length>=MAXSHOTS)continue;
+      let n=d.shots.length+1;while(d.shots.includes(d.id+"-"+n))n++;const k=d.id+"-"+n;await shotPut(k,data);d.shots.push(k);ns++}catch(err){}}}}
+  save();e.target.value="";renderAll();toast(`📥 Merged ${nr} runs and ${nd} defects${ns?` and ${ns} screenshots`:""}`)};
 
 
 function stick(){document.documentElement.style.setProperty("--stick",$("#top").offsetHeight+"px")}
 addEventListener("resize",stick);setInterval(countdown,60000);
 renderAll();stick();
+shotLoadAll().then(()=>{if(Object.keys(SHOT).length)list()});
 if(!S.profile)setTimeout(setup,300);
 </script>
 </body>
